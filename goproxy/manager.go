@@ -37,7 +37,7 @@ const (
         <th>Recv-Q</th><th>Send-Q</th><th width="50%">Target</th>
       </tr>
       {{if .GetSize}}
-      {{range $sess, $non := .GetSessions}}
+      {{range $sess := .GetSessions}}
       <tr>
 	<td>{{$sess.String}}</td>
 	<td></td>
@@ -121,9 +121,6 @@ func (mm *MsocksManager) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/lookup", mm.HandlerLookup)
 	mux.HandleFunc("/cutoff", mm.HandlerCutoff)
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
-	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 }
 
 func (mm *MsocksManager) HandlerMain(w http.ResponseWriter, req *http.Request) {

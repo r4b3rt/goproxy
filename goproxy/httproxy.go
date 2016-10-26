@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"strings"
 
@@ -81,7 +82,9 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	copyHeader(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
 
-	_, err = sutils.CoreCopy(w, resp.Body)
+	buf := sutils.BufferPool.Get().([]byte)
+	defer sutils.BufferPool.Put(buf)
+	_, err = io.CopyBuffer(w, resp.Body, buf)
 	if err != nil {
 		log.Error("%s", err)
 		return

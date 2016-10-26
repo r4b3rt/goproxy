@@ -62,15 +62,14 @@ func (sf *SessionFactory) CreateSession() (s *Session, err error) {
 
 	log.Notice("auth passwd.")
 	s = NewSession(conn)
-	// s.pong()
 	return
 }
 
 type SessionPool struct {
-	mu      sync.Mutex // sess pool locker
-	muf     sync.Mutex // factory locker
+	sess_lock      sync.RWMutex // sess pool locker
+	factory_lock     sync.Mutex // factory locker
 	sess    map[*Session]struct{}
-	asfs    []*SessionFactory
+	factories    []*SessionFactory
 	MinSess int
 	MaxConn int
 }
@@ -98,14 +97,14 @@ func (sp *SessionPool) AddSessionFactory(dialer sutils.Dialer, serveraddr, usern
 		password:   password,
 	}
 
-	sp.muf.Lock()
-	defer sp.muf.Unlock()
-	sp.asfs = append(sp.asfs, sf)
+	sp.factory_lock.Lock()
+	defer sp.factory_lock.Unlock()
+	sp.factories = append(sp.factories, sf)
 }
 
 func (sp *SessionPool) CutAll() {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
+	sp.sess_lock.Lock()
+	defer sp.sess_lock.Unlock()
 	for s, _ := range sp.sess {
 		s.Close()
 	}
@@ -113,22 +112,29 @@ func (sp *SessionPool) CutAll() {
 }
 
 func (sp *SessionPool) GetSize() int {
+	sp.sess_lock.RLock()
+	defer sp.sess_lock.RUnlock()
 	return len(sp.sess)
 }
 
-func (sp *SessionPool) GetSessions() (sess map[*Session]struct{}) {
-	return sp.sess
+func (sp *SessionPool) GetSessions() (sessions []*Session) {
+	sp.sess_lock.RLock()
+	defer sp.sess_lock.RUnlock()
+	for sess, _ := range sp.sess {
+		sessions = append(sessions, sess)
+	}
+	return
 }
 
 func (sp *SessionPool) Add(s *Session) {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
+	sp.sess_lock.Lock()
+	defer sp.sess_lock.Unlock()
 	sp.sess[s] = struct{}{}
 }
 
 func (sp *SessionPool) Remove(s *Session) (err error) {
-	sp.mu.Lock()
-	defer sp.mu.Unlock()
+	sp.sess_lock.Lock()
+	defer sp.sess_lock.Unlock()
 	if _, ok := sp.sess[s]; !ok {
 		return ErrSessionNotFound
 	}
@@ -137,27 +143,30 @@ func (sp *SessionPool) Remove(s *Session) (err error) {
 }
 
 func (sp *SessionPool) Get() (sess *Session, err error) {
-	if len(sp.sess) == 0 {
+	sess_len := sp.GetSize()
+
+	if sess_len == 0 {
 		err = sp.createSession(func() bool {
-			return len(sp.sess) == 0
+			return sp.GetSize() == 0
 		})
 		if err != nil {
 			return nil, err
 		}
+		sess_len = sp.GetSize()
 	}
 
-	sess, size := sp.getLessSess()
+	sess, size := sp.getMinimumSess()
 	if sess == nil {
 		return nil, ErrNoSession
 	}
 
-	if size > sp.MaxConn || len(sp.sess) < sp.MinSess {
+	if size > sp.MaxConn || sess_len < sp.MinSess {
 		go sp.createSession(func() bool {
-			if len(sp.sess) < sp.MinSess {
+			if sp.GetSize() < sp.MinSess {
 				return true
 			}
 			// normally, size == -1 should never happen
-			_, size := sp.getLessSess()
+			_, size := sp.getMinimumSess()
 			return size > sp.MaxConn
 		})
 	}
@@ -169,19 +178,18 @@ func (sp *SessionPool) Get() (sess *Session, err error) {
 // Each time it will take 2 ^ (net.ipv4.tcp_syn_retries + 1) - 1 second(s).
 // eg. net.ipv4.tcp_syn_retries = 4, connect will timeout in 2 ^ (4 + 1) -1 = 31s.
 func (sp *SessionPool) createSession(checker func() bool) (err error) {
-	sp.muf.Lock()
-	defer sp.muf.Unlock()
+	var sess *Session
+	sp.factory_lock.Lock()
 
 	if checker != nil && !checker() {
+		sp.factory_lock.Unlock()
 		return
 	}
 
-	var sess *Session
-
 	start := rand.Int()
-	end := start + DIAL_RETRY*len(sp.asfs)
+	end := start + DIAL_RETRY*len(sp.factories)
 	for i := start; i < end; i++ {
-		asf := sp.asfs[i%len(sp.asfs)]
+		asf := sp.factories[i%len(sp.factories)]
 		sess, err = asf.CreateSession()
 		if err != nil {
 			log.Error("%s", err)
@@ -189,6 +197,7 @@ func (sp *SessionPool) createSession(checker func() bool) (err error) {
 		}
 		break
 	}
+	sp.factory_lock.Unlock()
 
 	if err != nil {
 		log.Critical("can't connect to any server, quit.")
@@ -201,10 +210,13 @@ func (sp *SessionPool) createSession(checker func() bool) (err error) {
 	return
 }
 
-func (sp *SessionPool) getLessSess() (sess *Session, size int) {
+func (sp *SessionPool) getMinimumSess() (sess *Session, size int) {
 	size = -1
+	sp.sess_lock.RLock()
+	defer sp.sess_lock.RUnlock()
 	for s, _ := range sp.sess {
-		if size == -1 || s.GetSize() < size {
+		ssize := s.GetSize()
+		if size == -1 || ssize < size {
 			sess = s
 			size = s.GetSize()
 		}

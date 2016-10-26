@@ -18,13 +18,13 @@ type Session struct {
 	conn  net.Conn
 
 	closed  bool
-	plock   sync.Mutex
+	plock   sync.RWMutex
 	next_id uint16
 	ports   map[uint16]FrameSender
 
 	dialer   sutils.Dialer
-	Readcnt  *sutils.SpeedCounter
-	Writecnt *sutils.SpeedCounter
+	Readcnt  *SpeedCounter
+	Writecnt *SpeedCounter
 }
 
 func NewSession(conn net.Conn) (s *Session) {
@@ -32,8 +32,8 @@ func NewSession(conn net.Conn) (s *Session) {
 		conn:     conn,
 		closed:   false,
 		ports:    make(map[uint16]FrameSender, 0),
-		Readcnt:  sutils.NewSpeedCounter(),
-		Writecnt: sutils.NewSpeedCounter(),
+		Readcnt:  NewSpeedCounter(),
+		Writecnt: NewSpeedCounter(),
 	}
 	log.Notice("session %s created.", s.String())
 	return
@@ -44,12 +44,14 @@ func (s *Session) String() string {
 }
 
 func (s *Session) GetSize() int {
+	s.plock.RLock()
+	defer s.plock.RUnlock()
 	return len(s.ports)
 }
 
 func (s *Session) GetPorts() (ports []*Conn) {
-	s.plock.Lock()
-	defer s.plock.Unlock()
+	s.plock.RLock()
+	defer s.plock.RUnlock()
 
 	for _, fs := range s.ports {
 		if c, ok := fs.(*Conn); ok {
@@ -73,7 +75,6 @@ func (s *Session) GetSortedPorts() (ports ConnSlice) {
 
 func (s *Session) PutIntoNextId(fs FrameSender) (id uint16, err error) {
 	s.plock.Lock()
-	defer s.plock.Unlock()
 
 	startid := s.next_id
 	for _, ok := s.ports[s.next_id]; ok; _, ok = s.ports[s.next_id] {
@@ -86,45 +87,49 @@ func (s *Session) PutIntoNextId(fs FrameSender) (id uint16, err error) {
 	}
 	id = s.next_id
 	s.next_id += 2
-	log.Debug("%s put into next id %d: %p.", s.String(), id, fs)
-
 	s.ports[id] = fs
+
+	s.plock.Unlock()
+
+	log.Debug("%s put into next id %d: %p.", s.String(), id, fs)
 	return
 }
 
 func (s *Session) PutIntoId(id uint16, fs FrameSender) (err error) {
 	log.Debug("%s put into id %d: %p.", s.String(), id, fs)
+
 	s.plock.Lock()
-	defer s.plock.Unlock()
 
 	_, ok := s.ports[id]
 	if ok {
 		return ErrIdExist
 	}
-
 	s.ports[id] = fs
+
+	s.plock.Unlock()
 	return
 }
 
 func (s *Session) RemovePort(streamid uint16) (err error) {
 	s.plock.Lock()
-	defer s.plock.Unlock()
-
 	_, ok := s.ports[streamid]
 	if !ok {
 		return fmt.Errorf("streamid(%d) not exist.", streamid)
 	}
 	delete(s.ports, streamid)
+	s.plock.Unlock()
+
 	log.Info("%s remove port %d.", s.String(), streamid)
 	return
 }
 
 func (s *Session) Close() (err error) {
+	defer s.conn.Close()
+	s.plock.RLock()
+	defer s.plock.RUnlock()
+
 	log.Warning("close all connects (%d) for session: %s.",
 		len(s.ports), s.String())
-	defer s.conn.Close()
-	s.plock.Lock()
-	defer s.plock.Unlock()
 
 	s.Readcnt.Close()
 	s.Writecnt.Close()
@@ -161,10 +166,10 @@ func (s *Session) SendFrame(f Frame) (err error) {
 		return
 	}
 	b := buf.Bytes()
-	s.wlock.Lock()
-	defer s.wlock.Unlock()
 
+	s.wlock.Lock()
 	n, err := s.conn.Write(b)
+	s.wlock.Unlock()
 	if err != nil {
 		return
 	}
@@ -224,7 +229,10 @@ func (s *Session) Run() {
 // no drop, any error will reset main connection
 func (s *Session) sendFrameInChan(f Frame) (err error) {
 	streamid := f.GetStreamid()
+
+	s.plock.RLock()
 	c, ok := s.ports[streamid]
+	s.plock.RUnlock()
 	if !ok || c == nil {
 		return ErrStreamNotExist
 	}

@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -33,7 +34,7 @@ type Conn struct {
 	r_rest   []byte
 	rqueue   *Queue
 
-	wlock    sync.Mutex
+	wlock    sync.RWMutex
 	wbufsize uint32
 	wev      *sync.Cond
 }
@@ -196,17 +197,15 @@ func (c *Conn) InData(ft *FrameData) (err error) {
 	if err != nil {
 		return
 	}
-	c.rbufsize += uint32(len(ft.Data))
+	atomic.AddUint32(&c.rbufsize, uint32(len(ft.Data)))
 	return
 }
 
 func (c *Conn) InWnd(ft *FrameWnd) (err error) {
-	c.wlock.Lock()
-	defer c.wlock.Unlock()
-	c.wbufsize -= ft.Window
+	atomic.AddUint32(&c.wbufsize, -ft.Window)
 	c.wev.Signal()
 	log.Debug("remote readed %d, write buffer size: %d.",
-		ft.Window, c.wbufsize)
+		ft.Window, atomic.LoadUint32(&c.wbufsize))
 	return nil
 }
 
@@ -279,7 +278,8 @@ func (c *Conn) Read(data []byte) (n int, err error) {
 		}
 	}
 
-	c.rbufsize -= uint32(n)
+	atomic.AddUint32(&c.rbufsize, -uint32(n))
+	// c.rbufsize -= uint32(n)
 	fb := NewFrameWnd(c.streamid, uint32(n))
 	err = c.sender.SendFrame(fb)
 	if err != nil {
@@ -302,7 +302,7 @@ func (c *Conn) Write(data []byte) (n int, err error) {
 			size /= 2
 		}
 
-		err = c.WriteSlice(data[:size])
+		err = c.writeSlice(data[:size])
 
 		if err != nil {
 			log.Error("%s", err)
@@ -317,7 +317,7 @@ func (c *Conn) Write(data []byte) (n int, err error) {
 	return
 }
 
-func (c *Conn) WriteSlice(data []byte) (err error) {
+func (c *Conn) writeSlice(data []byte) (err error) {
 	f := NewFrameData(c.streamid, data)
 
 	if c.status != ST_EST && c.status != ST_CLOSE_WAIT {
@@ -325,8 +325,9 @@ func (c *Conn) WriteSlice(data []byte) (err error) {
 		return ErrState
 	}
 
-	log.Debug("write buffer size: %d, write len: %d", c.wbufsize, len(data))
-	for c.wbufsize+uint32(len(data)) > WINDOWSIZE {
+	log.Debug("write buffer size: %d, write len: %d",
+		atomic.LoadUint32(&c.wbufsize), len(data))
+	for atomic.LoadUint32(&c.wbufsize)+uint32(len(data)) > WINDOWSIZE {
 		c.wev.Wait()
 	}
 
@@ -335,7 +336,7 @@ func (c *Conn) WriteSlice(data []byte) (err error) {
 		log.Error("%s", err)
 		return
 	}
-	c.wbufsize += uint32(len(data))
+	atomic.AddUint32(&c.wbufsize, uint32(len(data)))
 	c.wev.Signal()
 	return
 }
@@ -371,11 +372,11 @@ func (c *Conn) GetStatus() (st string) {
 }
 
 func (c *Conn) GetReadBufSize() (n uint32) {
-	return c.rbufsize
+	return atomic.LoadUint32(&c.rbufsize)
 }
 
 func (c *Conn) GetWriteBufSize() (n uint32) {
-	return c.wbufsize
+	return atomic.LoadUint32(&c.wbufsize)
 }
 
 func (c *Conn) SetDeadline(t time.Time) error {

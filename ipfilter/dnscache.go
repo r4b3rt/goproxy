@@ -13,7 +13,7 @@ const maxCache = 512
 var errType = errors.New("type error")
 
 type DNSCache struct {
-	lock    sync.Mutex
+	lock  sync.Mutex
 	cache *Cache
 }
 
@@ -45,6 +45,7 @@ func (dc DNSCache) LookupIP(hostname string) (addrs []net.IP, err error) {
 
 	if len(addrs) > 0 {
 		dc.lock.Lock()
+		log.Notice("hostname %s in caching.", hostname)
 		dc.cache.Add(hostname, addrs)
 		dc.lock.Unlock()
 	}

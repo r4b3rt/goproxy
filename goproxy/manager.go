@@ -51,7 +51,7 @@ const (
 	{{with $conn}}
 	<td></td>
 	<td>{{$conn.GetStreamId}}</td>
-	<td>{{$conn.GetStatus}}</td>
+	<td>{{$conn.GetStatusString}}</td>
 	<td>{{$conn.GetReadBufSize}}</td>
 	<td>{{$conn.GetWriteBufSize}}</td>
 	<td>{{$conn.GetAddress}}</td>

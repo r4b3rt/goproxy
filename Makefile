@@ -25,9 +25,13 @@ install-dep:
 	go get github.com/op/go-logging
 	go get github.com/miekg/dns
 
+fastbuild:
+	mkdir -p bin
+	go build -o bin/goproxy github.com/shell909090/goproxy/goproxy
+
 build:
 	mkdir -p bin
-	go build -race -o bin/goproxy github.com/shell909090/goproxy/goproxy
+	go build -o bin/goproxy github.com/shell909090/goproxy/goproxy
 
 install: build
 	install -d $(DESTDIR)/usr/bin/

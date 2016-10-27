@@ -125,17 +125,24 @@ func (s *Session) RemovePort(streamid uint16) (err error) {
 
 func (s *Session) Close() (err error) {
 	defer s.conn.Close()
+
+	err = s.Readcnt.Close()
+	if err != nil {
+		return
+	}
+	err = s.Writecnt.Close()
+	if err != nil {
+		return
+	}
+
 	s.plock.RLock()
 	defer s.plock.RUnlock()
 
 	log.Warning("close all connects (%d) for session: %s.",
 		len(s.ports), s.String())
 
-	s.Readcnt.Close()
-	s.Writecnt.Close()
-
 	for _, v := range s.ports {
-		v.CloseFrame()
+		go v.CloseFrame()
 	}
 	s.closed = true
 	return
@@ -168,6 +175,7 @@ func (s *Session) SendFrame(f Frame) (err error) {
 	b := buf.Bytes()
 
 	s.wlock.Lock()
+	s.conn.SetWriteDeadline(time.Now().Add(WRITE_TIMEOUT * time.Second))
 	n, err := s.conn.Write(b)
 	s.wlock.Unlock()
 	if err != nil {
@@ -247,7 +255,7 @@ func (s *Session) sendFrameInChan(f Frame) (err error) {
 // ---- syn part ----
 
 func (s *Session) Dial(network, address string) (c *Conn, err error) {
-	c = NewConn(ST_SYN_SENT, 0, s, network, address)
+	c = NewConn(0, s, network, address)
 	streamid, err := s.PutIntoNextId(c)
 	if err != nil {
 		return
@@ -255,7 +263,7 @@ func (s *Session) Dial(network, address string) (c *Conn, err error) {
 	c.streamid = streamid
 
 	log.Info("try dial %s => %s.", s.conn.RemoteAddr().String(), address)
-	err = c.WaitForConn()
+	err = c.SendSynAndWait()
 	if err != nil {
 		return
 	}
@@ -265,17 +273,22 @@ func (s *Session) Dial(network, address string) (c *Conn, err error) {
 
 func (s *Session) on_syn(ft *FrameSyn) (err error) {
 	// lock streamid temporary, with status sync recved
-	c := NewConn(ST_SYN_RECV, ft.Streamid, s, ft.Network, ft.Address)
+	c := NewConn(ft.Streamid, s, ft.Network, ft.Address)
+	err = c.CheckAndSetStatus(ST_UNKNOWN, ST_SYN_RECV)
+	if err != nil {
+		return
+	}
+
 	err = s.PutIntoId(ft.Streamid, c)
 	if err != nil {
-		log.Error("%s", err)
+		log.Error("%s", err.Error())
 
 		fb := NewFrameResult(ft.Streamid, ERR_IDEXIST)
-		err := s.SendFrame(fb)
+		err = s.SendFrame(fb)
 		if err != nil {
-			return err
+			log.Error("%s", err.Error())
 		}
-		return nil
+		return
 	}
 
 	// it may toke long time to connect with target address
@@ -308,7 +321,10 @@ func (s *Session) on_syn(ft *FrameSyn) (err error) {
 			log.Error("%s", err)
 			return
 		}
-		c.status = ST_EST
+		err = c.CheckAndSetStatus(ST_SYN_RECV, ST_EST)
+		if err != nil {
+			return
+		}
 
 		go sutils.CopyLink(conn, c)
 		log.Notice("connected %s => %s:%s.", c.String(), ft.Network, ft.Address)

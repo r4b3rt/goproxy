@@ -25,23 +25,23 @@ type Conn struct {
 	sess     *Session
 	streamid uint16
 	sender   FrameSender
-	ch       chan uint32
+	ch_syn   chan uint32
 	Network  string
 	Address  string
 
 	rlock    sync.Mutex // this should used to block reader and reader, not writer
-	rbufsize uint32
+	rbufsize int32
 	r_rest   []byte
 	rqueue   *Queue
 
 	wlock    sync.RWMutex
-	wbufsize uint32
+	wbufsize int32
 	wev      *sync.Cond
 }
 
-func NewConn(status uint8, streamid uint16, sess *Session, network, address string) (c *Conn) {
+func NewConn(streamid uint16, sess *Session, network, address string) (c *Conn) {
 	c = &Conn{
-		status:   status,
+		status:   ST_UNKNOWN,
 		sess:     sess,
 		streamid: streamid,
 		sender:   sess,
@@ -79,72 +79,94 @@ func (c *Conn) String() (s string) {
 	return fmt.Sprintf("%d(%d)", c.sess.LocalPort(), c.streamid)
 }
 
-func (c *Conn) WaitForConn() (err error) {
-	c.ch = make(chan uint32, 0)
+func (c *Conn) SendSynAndWait() (err error) {
+	c.ch_syn = make(chan uint32, 0)
+
+	err = c.CheckAndSetStatus(ST_UNKNOWN, ST_SYN_SENT)
+	if err != nil {
+		return
+	}
 
 	fb := NewFrameSyn(c.streamid, c.Network, c.Address)
 	err = c.sess.SendFrame(fb)
 	if err != nil {
 		log.Error("%s", err)
-		c.Final()
+		go c.Final()
 		return
 	}
 
-	errno := RecvWithTimeout(c.ch, DIAL_TIMEOUT*time.Second)
+	errno := RecvWithTimeout(c.ch_syn, DIAL_TIMEOUT*time.Second)
+
 	if errno != ERR_NONE {
 		log.Error("remote connect %s failed for %d.", c.String(), errno)
-		c.Final()
+		go c.Final()
 	} else {
+		err = c.CheckAndSetStatus(ST_SYN_SENT, ST_EST)
+		if err != nil {
+			return
+		}
 		log.Notice("%s connected: %s => %s.", c.Network, c.String(), c.Address)
 	}
 
-	c.ch = nil
+	c.ch_syn = nil
 	return
 }
 
 func (c *Conn) Final() {
-	c.rqueue.Close()
-
 	err := c.sess.RemovePort(c.streamid)
 	if err != nil {
 		log.Error("%s", err)
+		return
 	}
 
 	log.Notice("%s final.", c.String())
+
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.status != ST_UNKNOWN {
+		c.rqueue.Close()
+	}
 	c.status = ST_UNKNOWN
 	return
 }
 
 func (c *Conn) Close() (err error) {
-	log.Info("close %s.", c.String())
-	c.lock.Lock()
-	defer c.lock.Unlock()
+	log.Info("call Close %s.", c.String())
 
+	c.lock.Lock()
 	switch c.status {
 	case ST_UNKNOWN, ST_FIN_WAIT:
 		// maybe call close twice
+		c.lock.Unlock()
+		log.Error("unexpected status %d, maybe try to close a closed conn.")
 		return
 	case ST_EST:
-		log.Info("%s closed from local.", c.String())
-		fb := NewFrameFin(c.streamid)
-		err = c.sender.SendFrame(fb)
-		if err != nil {
-			log.Error("%s", err)
-			return
-		}
 		c.status = ST_FIN_WAIT
-	case ST_CLOSE_WAIT:
+		c.lock.Unlock()
+		log.Info("%s closed from local.", c.String())
+
 		fb := NewFrameFin(c.streamid)
 		err = c.sender.SendFrame(fb)
 		if err != nil {
-			log.Error("%s", err)
+			log.Info("%s", err)
 			return
 		}
-		c.Final()
-	default:
-		log.Error("%s", ErrUnknownState.Error())
-	}
+	case ST_CLOSE_WAIT:
+		c.lock.Unlock()
 
+		fb := NewFrameFin(c.streamid)
+		err = c.sender.SendFrame(fb)
+		if err != nil {
+			log.Info("%s", err)
+			return
+		}
+		go c.Final()
+	default:
+		c.lock.Unlock()
+		err = ErrUnknownState
+		log.Error("%s", err.Error())
+		return
+	}
 	return
 }
 
@@ -153,7 +175,10 @@ func (c *Conn) SendFrame(f Frame) (err error) {
 	default:
 		err = ErrUnexpectedPkg
 		log.Error("%s", err)
-		c.Close()
+		err = c.Close()
+		if err != nil {
+			log.Error("%s", err.Error())
+		}
 		return
 	case *FrameResult:
 		return c.InConnect(ft.Errno)
@@ -165,47 +190,44 @@ func (c *Conn) SendFrame(f Frame) (err error) {
 		return c.InFin(ft)
 	case *FrameRst:
 		log.Debug("reset %s.", c.String())
-		c.Final()
+		go c.Final()
 	}
 	return
 }
 
 func (c *Conn) InConnect(errno uint32) (err error) {
 	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	if c.status != ST_SYN_SENT {
-		return ErrNotSyn
+		c.lock.Unlock()
+		err = ErrNotSyn
+		log.Error("%s", err.Error())
+		return
 	}
-
-	if errno == ERR_NONE {
-		c.status = ST_EST
-	} else {
-		c.Final()
-	}
+	c.lock.Unlock()
 
 	select {
-	case c.ch <- errno:
+	case c.ch_syn <- errno:
 	default:
 	}
 	return
 }
 
 func (c *Conn) InData(ft *FrameData) (err error) {
-	log.Info("%s recved %d bytes.", c.String(), len(ft.Data))
-	err = c.rqueue.Push(ft.Data)
-	if err != nil {
-		return
-	}
-	atomic.AddUint32(&c.rbufsize, uint32(len(ft.Data)))
+	atomic.AddInt32(&c.rbufsize, int32(len(ft.Data)))
+	c.rqueue.Push(ft.Data)
+	log.Debug("%s recved %d bytes, rbufsize is %d bytes.",
+		c.String(), len(ft.Data), atomic.LoadInt32(&c.rbufsize))
 	return
 }
 
 func (c *Conn) InWnd(ft *FrameWnd) (err error) {
-	atomic.AddUint32(&c.wbufsize, -ft.Window)
+	atomic.AddInt32(&c.wbufsize, -int32(ft.Window))
+	if atomic.LoadInt32(&c.wbufsize) < 0 {
+		panic("wbufsize < 0")
+	}
 	c.wev.Signal()
-	log.Debug("remote readed %d, write buffer size: %d.",
-		ft.Window, atomic.LoadUint32(&c.wbufsize))
+	log.Debug("%s remote readed %d, write buffer size: %d.",
+		c.String(), ft.Window, atomic.LoadInt32(&c.wbufsize))
 	return nil
 }
 
@@ -215,31 +237,33 @@ func (c *Conn) InFin(ft *FrameFin) (err error) {
 	c.rqueue.Close()
 
 	c.lock.Lock()
-	defer c.lock.Unlock()
 
 	switch c.status {
 	case ST_EST:
-		log.Info("%s closed from remote.", c.String())
 		// close read pipe but not sent fin back
 		// wait reader to close
 		c.status = ST_CLOSE_WAIT
+		c.lock.Unlock()
+		log.Info("%s closed from remote.", c.String())
 		return
 	case ST_FIN_WAIT:
+		c.lock.Unlock()
 		// actually we don't need to *REALLY* wait 2MSL
 		// because tcp will make sure fin arrival
 		// don't need last ack or time wait to make sure that last ack will be received
-		c.Final()
+		go c.Final()
 		// in final rqueue.close will be call again, that's ok
 		return
+	default: // error
+		c.lock.Unlock()
+		log.Error("unknown status")
+		return ErrFinState
 	}
-	// error
-	return ErrFinState
+	return
 }
 
 func (c *Conn) CloseFrame() error {
-	// maybe conn closed
-	c.rqueue.Close()
-	return nil
+	return c.InFin(nil)
 }
 
 func (c *Conn) Read(data []byte) (n int, err error) {
@@ -247,18 +271,22 @@ func (c *Conn) Read(data []byte) (n int, err error) {
 	c.rlock.Lock()
 	defer c.rlock.Unlock()
 
+	if len(data) > (1 << 30) {
+		panic("read buf size too large")
+	}
+
 	target := data[:]
-	block := true
 	for len(target) > 0 {
 		if c.r_rest == nil {
 			// reader should be blocked in here
-			v, err = c.rqueue.Pop(block)
+			v, err = c.rqueue.Pop(n == 0)
 			if err == ErrQueueClosed {
 				err = io.EOF
 			}
 			if err != nil {
 				return
 			}
+
 			if v == nil {
 				break
 			}
@@ -268,7 +296,6 @@ func (c *Conn) Read(data []byte) (n int, err error) {
 		size := copy(target, c.r_rest)
 		target = target[size:]
 		n += size
-		block = false
 
 		if len(c.r_rest) > size {
 			c.r_rest = c.r_rest[size:]
@@ -278,8 +305,11 @@ func (c *Conn) Read(data []byte) (n int, err error) {
 		}
 	}
 
-	atomic.AddUint32(&c.rbufsize, -uint32(n))
-	// c.rbufsize -= uint32(n)
+	atomic.AddInt32(&c.rbufsize, -int32(n))
+	if atomic.LoadInt32(&c.rbufsize) < 0 {
+		panic("rbufsize < 0")
+	}
+
 	fb := NewFrameWnd(c.streamid, uint32(n))
 	err = c.sender.SendFrame(fb)
 	if err != nil {
@@ -326,17 +356,18 @@ func (c *Conn) writeSlice(data []byte) (err error) {
 	}
 
 	log.Debug("write buffer size: %d, write len: %d",
-		atomic.LoadUint32(&c.wbufsize), len(data))
-	for atomic.LoadUint32(&c.wbufsize)+uint32(len(data)) > WINDOWSIZE {
+		atomic.LoadInt32(&c.wbufsize), len(data))
+	for atomic.LoadInt32(&c.wbufsize)+int32(len(data)) > WINDOWSIZE {
+		// this may cause block. maybe signal will be lost.
 		c.wev.Wait()
 	}
 
 	err = c.sender.SendFrame(f)
 	if err != nil {
-		log.Error("%s", err)
+		log.Info("%s", err)
 		return
 	}
-	atomic.AddUint32(&c.wbufsize, uint32(len(data)))
+	atomic.AddInt32(&c.wbufsize, int32(len(data)))
 	c.wev.Signal()
 	return
 }
@@ -355,7 +386,9 @@ func (c *Conn) RemoteAddr() net.Addr {
 	}
 }
 
-func (c *Conn) GetStatus() (st string) {
+func (c *Conn) GetStatusString() (st string) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	switch c.status {
 	case ST_SYN_RECV:
 		return "SYN_RECV"
@@ -371,12 +404,32 @@ func (c *Conn) GetStatus() (st string) {
 	return "UNKNOWN"
 }
 
-func (c *Conn) GetReadBufSize() (n uint32) {
-	return atomic.LoadUint32(&c.rbufsize)
+func (c *Conn) CheckAndSetStatus(old uint8, new uint8) (err error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.status != old {
+		err = ErrState
+		log.Error("%s", err.Error())
+		return
+	}
+	c.status = new
+	return
 }
 
-func (c *Conn) GetWriteBufSize() (n uint32) {
-	return atomic.LoadUint32(&c.wbufsize)
+func (c *Conn) GetReadBufSize() (n int32) {
+	n = atomic.LoadInt32(&c.rbufsize)
+	if n < 0 {
+		panic("rbufsize < 0")
+	}
+	return
+}
+
+func (c *Conn) GetWriteBufSize() (n int32) {
+	n = atomic.LoadInt32(&c.wbufsize)
+	if n < 0 {
+		panic("wbufsize < 0")
+	}
+	return
 }
 
 func (c *Conn) SetDeadline(t time.Time) error {

@@ -25,10 +25,6 @@ install-dep:
 	go get github.com/op/go-logging
 	go get github.com/miekg/dns
 
-fastbuild:
-	mkdir -p bin
-	go build -o bin/goproxy github.com/shell909090/goproxy/goproxy
-
 build:
 	mkdir -p bin
 	go build -o bin/goproxy github.com/shell909090/goproxy/goproxy
@@ -40,16 +36,5 @@ install: build
 	install -m 644 debian/routes.list.gz $(DESTDIR)/usr/share/goproxy/
 	install -d $(DESTDIR)/etc/goproxy/
 	install -m 644 debian/config.json $(DESTDIR)/etc/goproxy/
-
-press-clean:
-	rm -f server.log client.log httproxy.log
-
-press: build press-clean
-	bin/goproxy -config=server.json &
-	bin/goproxy -config=client.json &
-	sleep 1
-	# curl -x http://localhost:5234 http://localhost:6060/ > /dev/null
-	curl -x http://localhost:5234 http://www.microsoft.com > /dev/null
-	killall goproxy
 
 ### Makefile ends here

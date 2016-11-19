@@ -138,7 +138,7 @@ func (c *Conn) Close() (err error) {
 	case ST_UNKNOWN, ST_FIN_WAIT:
 		// maybe call close twice
 		c.lock.Unlock()
-		log.Error("unexpected status %d, maybe try to close a closed conn.")
+		log.Error("unexpected status %d, maybe try to close a closed conn.", c.status)
 		return
 	case ST_EST:
 		c.status = ST_FIN_WAIT
@@ -256,7 +256,7 @@ func (c *Conn) InFin(ft *FrameFin) (err error) {
 		return
 	default: // error
 		c.lock.Unlock()
-		log.Error("unknown status")
+		log.Error("unknown status: %d", c.status)
 		return ErrFinState
 	}
 	return

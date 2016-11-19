@@ -197,9 +197,14 @@ func (s *Session) Run() {
 
 	for {
 		f, err := ReadFrame(s.conn)
-		if err != nil {
+		switch err {
+		default:
 			log.Error("%s", err)
 			return
+		case io.EOF:
+			log.Info("%s read EOF", s.String())
+			return
+		case nil:
 		}
 
 		log.Debug("recv %s", f.Debug())
@@ -212,8 +217,8 @@ func (s *Session) Run() {
 		case *FrameResult, *FrameData, *FrameWnd, *FrameFin, *FrameRst:
 			err = s.sendFrameInChan(f)
 			if err != nil {
-				log.Error("%s(%d) send failed, err: %s.",
-					s.String(), f.GetStreamid(), err.Error())
+				log.Error("send %s => %s(%d) failed, err: %s.",
+					f.Debug(), s.String(), f.GetStreamid(), err.Error())
 				return
 			}
 		case *FrameSyn:

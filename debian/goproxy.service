@@ -1,0 +1,11 @@
+[Unit]
+Description=goproxy
+After=network-online.target
+
+[Service]
+EnvironmentFile=-/etc/default/goproxy
+ExecStart=/usr/bin/goproxy
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

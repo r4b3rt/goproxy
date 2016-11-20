@@ -8,5 +8,5 @@ export DH_OPTIONS
 export DH_GOPKG := github.com/shell909090/goproxy
 
 %:
-	dh $@
+	dh $@ --with=systemd
 # --buildsystem=golang --with=golang

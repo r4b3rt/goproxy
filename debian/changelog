@@ -1,39 +1,41 @@
-goproxy (2.4.4) UNRELEASED; urgency=medium
+goproxy (2.4.4) unstable; urgency=medium
 
-  * detail fix
+  [ Shell Xu ]
+  * detail fix.
+  * switch to systemd.
 
- -- shell <shell@dskvmdeb.lan>  Sun, 30 Oct 2016 16:16:46 +0800
+ -- Shell Xu <shell909090@gmail.com>  Sun, 20 Nov 2016 15:00:03 +0800
 
 goproxy (2.4.3) unstable; urgency=medium
 
   * race cond fix.
 
- -- shell <shell@dskvmdeb.lan>  Tue, 25 Oct 2016 02:21:22 +0800
+ -- Shell Xu <shell909090@gmail.com>  Tue, 25 Oct 2016 02:21:22 +0800
 
 goproxy (2.4.2) unstable; urgency=medium
 
   * support multi server.
 
- -- Shell.Xu <shell909090@gmail.com>  Thu, 04 Feb 2016 14:38:45 +0800
+ -- Shell Xu <shell909090@gmail.com>  Thu, 04 Feb 2016 14:38:45 +0800
 
 goproxy (2.4.1) unstable; urgency=medium
 
   * new ip filter system.
 
- -- Shell.Xu <shell909090@gmail.com>  Fri, 21 Aug 2015 15:34:24 +0800
+ -- Shell Xu <shell909090@gmail.com>  Fri, 21 Aug 2015 15:34:24 +0800
 
 goproxy (2.4.0) unstable; urgency=low
 
   * sync with network.
   * port mapping.
 
- -- Shell.Xu <shell909090@gmail.com>  Fri, 21 Aug 2015 14:38:59 +0800
+ -- Shell Xu <shell909090@gmail.com>  Fri, 21 Aug 2015 14:38:59 +0800
 
 goproxy (2.3.0) unstable; urgency=medium
 
   - remove dns subsystem.
 
- -- Shell.Xu <shell909090@gmail.com>  Sat, 24 Jan 2015 14:41:14 +0800
+ -- Shell Xu <shell909090@gmail.com>  Sat, 24 Jan 2015 14:41:14 +0800
 
 goproxy (2.2.2) unstable; urgency=low
 
@@ -42,14 +44,14 @@ goproxy (2.2.2) unstable; urgency=low
   * fix this: panic at no network (https://github.com/shell909090/goproxy/issues/7).
   * redesigned session pool.
 
- -- Shell.Xu <shell909090@gmail.com>  Sun, 04 Jan 2015 17:52:03 +0800
+ -- Shell Xu <shell909090@gmail.com>  Sun, 04 Jan 2015 17:52:03 +0800
 
 goproxy (2.2.1) unstable; urgency=medium
 
   [ Shell Xu ]
   * session pool system.
 
- -- Shell.Xu <shell909090@gmail.com>  Sat, 28 Jun 2014 01:17:03 +0800
+ -- Shell Xu <shell909090@gmail.com>  Sat, 28 Jun 2014 01:17:03 +0800
 
 goproxy (2.2.0) unstable; urgency=medium
 
@@ -68,13 +70,13 @@ goproxy (2.1.3) unstable; urgency=medium
 
   * new config set.
 
- -- Shell.Xu <shell909090@gmail.com>  Fri, 20 Jun 2014 15:17:21 +0800
+ -- Shell Xu <shell909090@gmail.com>  Fri, 20 Jun 2014 15:17:21 +0800
 
 goproxy (2.1.2) unstable; urgency=medium
 
   * remove time wait.
 
- -- Shell.Xu <shell909090@gmail.com>  Thu, 19 Jun 2014 16:57:01 +0800
+ -- Shell Xu <shell909090@gmail.com>  Thu, 19 Jun 2014 16:57:01 +0800
 
 goproxy (2.1.1) unstable; urgency=medium
 
@@ -98,7 +100,7 @@ goproxy (2.0.6) unstable; urgency=low
   * fix issue which will crush system when close main connection with somebody dial.
   * half close protect.
 
- -- Shell.Xu <shell909090@gmail.com>  Sun, 08 Dec 2013 22:38:32 +0800
+ -- Shell Xu <shell909090@gmail.com>  Sun, 08 Dec 2013 22:38:32 +0800
 
 goproxy (2.0.5) unstable; urgency=low
 
@@ -157,19 +159,19 @@ goproxy (1.7) unstable; urgency=low
 
   * Use DNS over goproxy, not udp drop.
 
- -- shell <shell@deb64.lan>  Wed, 13 Feb 2013 17:41:09 +0800
+ -- Shell Xu <shell909090@gmail.com>  Wed, 13 Feb 2013 17:41:09 +0800
 
 goproxy (1.6) unstable; urgency=low
 
   * New protocol.
 
- -- shell <shell@deb64.lan>  Fri, 08 Feb 2013 22:22:26 +0800
+ -- Shell Xu <shell909090@gmail.com>  Fri, 08 Feb 2013 22:22:26 +0800
 
 goproxy (1.2) unstable; urgency=low
 
   * Fix to stable.
 
- -- shell <shell@deb64.lan>  Sun, 09 Dec 2012 18:58:37 +0800
+ -- Shell Xu <shell909090@gmail.com>  Sun, 09 Dec 2012 18:58:37 +0800
 
 goproxy (1.1) unstable; urgency=low
 

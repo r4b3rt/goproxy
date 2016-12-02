@@ -36,11 +36,11 @@ func (upm *UdpPortMapper) RemovePorts(addr net.Addr) {
 
 	_, ok := upm.ports[addr]
 	if !ok {
-		log.Error("remove a port not exits: %s.", addr.String())
+		logger.Error("remove a port not exits: %s.", addr.String())
 		return
 	}
 	delete(upm.ports, addr)
-	log.Debug("remove port %s.", addr.String())
+	logger.Debug("remove port %s.", addr.String())
 	return
 }
 
@@ -55,7 +55,7 @@ func (upm *UdpPortMapper) UdpPortmap(pm PortMap, dialer sutils.Dialer) (err erro
 	}
 	defer sconn.Close()
 	sconn.SetReadBuffer(UDP_READBUFFER)
-	log.Info("udp listening in %s", pm.Src)
+	logger.Info("udp listening in %s", pm.Src)
 
 	for {
 		up := NewUdpPackage()
@@ -65,7 +65,7 @@ func (upm *UdpPortMapper) UdpPortmap(pm PortMap, dialer sutils.Dialer) (err erro
 		case io.EOF:
 			return nil
 		default:
-			log.Error("%s", err.Error())
+			logger.Error("%s", err.Error())
 			continue
 		}
 		up.nr = nr
@@ -73,11 +73,11 @@ func (upm *UdpPortMapper) UdpPortmap(pm PortMap, dialer sutils.Dialer) (err erro
 		upm.lock.Lock()
 		umc, ok := upm.ports[addr]
 		if !ok {
-			log.Info("udp forward got new addr %s.", addr)
+			logger.Info("udp forward got new addr %s.", addr)
 			dconn, err := dialer.Dial(pm.Net, pm.Dst)
 			if err != nil {
 				upm.lock.Unlock()
-				log.Error("%s", err.Error())
+				logger.Error("%s", err.Error())
 				continue
 			}
 			umc = NewUdpMapperConn(upm, sconn, dconn, addr, pm.Dst)
@@ -132,7 +132,7 @@ func NewUdpMapperConn(upm *UdpPortMapper, sconn *net.UDPConn,
 }
 
 func (umc *UdpMapperConn) Close() {
-	log.Notice("udp redirect %s closed.", umc.addr.String())
+	logger.Notice("udp redirect %s closed.", umc.addr.String())
 	umc.dconn.Close()
 	close(umc.ch)
 	umc.upm.RemovePorts(umc.addr)
@@ -162,7 +162,7 @@ func (umc *UdpMapperConn) RecvHandler() {
 		case io.EOF:
 			return
 		default:
-			log.Error("%s", err.Error())
+			logger.Error("%s", err.Error())
 			continue
 		}
 
@@ -172,12 +172,12 @@ func (umc *UdpMapperConn) RecvHandler() {
 		case io.EOF:
 			return
 		default:
-			log.Error("%s", err.Error())
+			logger.Error("%s", err.Error())
 			continue
 		}
 
 		atomic.StoreInt32(&umc.cnt, 0)
-		log.Debug("udp package recved %s <=> %s.", umc.addr.String(), umc.dst)
+		logger.Debug("udp package recved %s <=> %s.", umc.addr.String(), umc.dst)
 	}
 }
 
@@ -195,13 +195,13 @@ func (umc *UdpMapperConn) SendHandler() {
 		case io.EOF:
 			return
 		default:
-			log.Error("%s", err.Error())
+			logger.Error("%s", err.Error())
 			continue
 		}
 		up.Free()
 
 		atomic.StoreInt32(&umc.cnt, 0)
-		log.Debug("udp package sent %s <=> %s.", umc.addr.String(), umc.dst)
+		logger.Debug("udp package sent %s <=> %s.", umc.addr.String(), umc.dst)
 	}
 }
 
@@ -210,7 +210,7 @@ func TcpPortmap(pm PortMap, dialer sutils.Dialer) (err error) {
 	if err != nil {
 		return
 	}
-	log.Info("tcp listening in %s", pm.Src)
+	logger.Info("tcp listening in %s", pm.Src)
 
 	for {
 		var sconn, dconn net.Conn
@@ -219,7 +219,7 @@ func TcpPortmap(pm PortMap, dialer sutils.Dialer) (err error) {
 		if err != nil {
 			continue
 		}
-		log.Info("accept in %s:%s, try to dial %s.", pm.Net, pm.Src, pm.Dst)
+		logger.Info("accept in %s:%s, try to dial %s.", pm.Net, pm.Src, pm.Dst)
 
 		dconn, err = dialer.Dial(pm.Net, pm.Dst)
 		if err != nil {
@@ -240,7 +240,7 @@ func CreatePortmap(pm PortMap, dialer sutils.Dialer) {
 		err = TcpPortmap(pm, dialer)
 	}
 	if err != nil {
-		log.Error("%s", err.Error())
+		logger.Error("%s", err.Error())
 	}
 	return
 }

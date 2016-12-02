@@ -34,7 +34,7 @@ func NewProxy(dialer sutils.Dialer, username string, password string) (p *Proxy)
 		transport: http.Transport{Dial: dialer.Dial},
 	}
 	if username != "" && password != "" {
-		log.Info("proxy-auth required")
+		logger.Info("proxy-auth required")
 	}
 	return
 }
@@ -48,11 +48,11 @@ func copyHeader(dst, src http.Header) {
 }
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	log.Info("http: %s %s", req.Method, req.URL)
+	logger.Info("http: %s %s", req.Method, req.URL)
 
 	if p.username != "" && p.password != "" {
 		if !BasicAuth(w, req, p.username, p.password) {
-			log.Error("Http Auth Required")
+			logger.Error("Http Auth Required")
 			w.Header().Set("Proxy-Authenticate", "Basic realm=\"GoProxy\"")
 			http.Error(w, http.StatusText(407), 407)
 			return
@@ -73,7 +73,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	resp, err := p.transport.RoundTrip(req)
 	if err != nil {
-		log.Error("%s", err)
+		logger.Error("%s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -86,7 +86,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	defer sutils.BufferPool.Put(buf)
 	_, err = io.CopyBuffer(w, resp.Body, buf)
 	if err != nil {
-		log.Error("%s", err)
+		logger.Error("%s", err)
 		return
 	}
 	return
@@ -95,12 +95,12 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func (p *Proxy) Connect(w http.ResponseWriter, r *http.Request) {
 	hij, ok := w.(http.Hijacker)
 	if !ok {
-		log.Error("httpserver does not support hijacking")
+		logger.Error("httpserver does not support hijacking")
 		return
 	}
 	srcconn, _, err := hij.Hijack()
 	if err != nil {
-		log.Error("Cannot hijack connection ", err)
+		logger.Error("Cannot hijack connection ", err)
 		return
 	}
 	defer srcconn.Close()
@@ -111,7 +111,7 @@ func (p *Proxy) Connect(w http.ResponseWriter, r *http.Request) {
 	}
 	dstconn, err := p.dialer.Dial("tcp", host)
 	if err != nil {
-		log.Error("dial failed: %s", err.Error())
+		logger.Error("dial failed: %s", err.Error())
 		srcconn.Write([]byte("HTTP/1.0 502 OK\r\n\r\n"))
 		return
 	}

@@ -1,3 +1,10 @@
+goproxy (2.4.5) UNRELEASED; urgency=medium
+
+  [ Shell Xu ]
+  * add force ipv4
+
+ -- Shell.Xu <shell909090@gmail.com>  Fri, 02 Dec 2016 16:35:47 +0800
+
 goproxy (2.4.4) unstable; urgency=medium
 
   [ Shell Xu ]

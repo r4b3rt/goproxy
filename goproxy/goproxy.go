@@ -12,7 +12,7 @@ import (
 	"github.com/shell909090/goproxy/sutils"
 )
 
-var log = logging.MustGetLogger("")
+var logger = logging.MustGetLogger("")
 
 const TypeInternal = "internal"
 
@@ -36,8 +36,9 @@ type Config struct {
 
 type ServerConfig struct {
 	Config
-	Key  string
-	Auth map[string]string
+	ForceIPv4 bool
+	Key       string
+	Auth      map[string]string
 }
 
 type ServerDefine struct {
@@ -125,7 +126,7 @@ func SetLogging(cfg Config) (err error) {
 	if cfg.Logfile != "" {
 		file, err = os.OpenFile(cfg.Logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 		}
 	}
 	logBackend := logging.NewLogBackend(file, "",
@@ -161,17 +162,17 @@ func main() {
 
 	switch cfg.Mode {
 	case "server":
-		log.Notice("server mode start.")
+		logger.Notice("server mode start.")
 		err = run_server(&cfg)
 	case "http":
-		log.Notice("http mode start.")
+		logger.Notice("http mode start.")
 		err = run_httproxy(&cfg)
 	default:
-		log.Info("unknown mode")
+		logger.Info("unknown mode")
 		return
 	}
 	if err != nil {
-		log.Error("%s", err)
+		logger.Error("%s", err)
 	}
-	log.Info("server stopped")
+	logger.Info("server stopped")
 }

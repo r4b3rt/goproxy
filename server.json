@@ -5,6 +5,7 @@
     "logfile": "server.log",
     "loglevel": "INFO",
 
+    "forceipv4": true,
     "key": "toqq7QrjCSKSkT2wW6TtWQ==",
 
     "auth": {

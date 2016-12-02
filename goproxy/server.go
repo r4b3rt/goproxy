@@ -14,7 +14,7 @@ func httpserver(addr string, handler http.Handler) {
 	for {
 		err := http.ListenAndServe(addr, handler)
 		if err != nil {
-			log.Error("%s", err.Error())
+			logger.Error("%s", err.Error())
 			return
 		}
 	}
@@ -36,7 +36,13 @@ func run_server(basecfg *Config) (err error) {
 		return
 	}
 
-	svr, err := msocks.NewServer(cfg.Auth, sutils.DefaultTcpDialer)
+	var dialer sutils.Dialer = sutils.DefaultTcpDialer
+	if cfg.ForceIPv4 {
+		logger.Info("force ipv4 dailer.")
+		dialer = sutils.DefaultTcp4Dialer
+	}
+
+	svr, err := msocks.NewServer(cfg.Auth, dialer)
 	if err != nil {
 		return
 	}
@@ -87,7 +93,7 @@ func run_httproxy(basecfg *Config) (err error) {
 		fdialer := ipfilter.NewFilteredDialer(dialer)
 		err = fdialer.LoadFilter(sutils.DefaultTcpDialer, cfg.Blackfile)
 		if err != nil {
-			log.Error("%s", err.Error())
+			logger.Error("%s", err.Error())
 			return
 		}
 		dialer = fdialer

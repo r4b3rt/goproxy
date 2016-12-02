@@ -24,6 +24,19 @@ func (td *TcpDialer) DialTimeout(network, address string, timeout time.Duration)
 
 var DefaultTcpDialer = &TcpDialer{}
 
+type Tcp4Dialer struct {
+}
+
+func (td *Tcp4Dialer) Dial(network, address string) (net.Conn, error) {
+	return net.Dial("tcp4", address)
+}
+
+func (td *Tcp4Dialer) DialTimeout(network, address string, timeout time.Duration) (net.Conn, error) {
+	return net.DialTimeout("tcp4", address, timeout)
+}
+
+var DefaultTcp4Dialer = &Tcp4Dialer{}
+
 type Lookuper interface {
 	LookupIP(host string) (addrs []net.IP, err error)
 }

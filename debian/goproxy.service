@@ -3,6 +3,8 @@ Description=goproxy
 After=network-online.target
 
 [Service]
+User=nobody
+Group=nogroup
 EnvironmentFile=-/etc/default/goproxy
 ExecStart=/usr/bin/goproxy
 Restart=on-failure

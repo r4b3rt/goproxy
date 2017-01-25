@@ -47,6 +47,17 @@ func (s *Session) GetSize() int {
 	return len(s.ports)
 }
 
+func (s *Session) GetPortById(id uint16) (FrameSender, error) {
+	s.plock.Lock()
+	defer s.plock.Unlock()
+
+	c, ok := s.ports[id]
+	if !ok || c == nil {
+		return nil, ErrStreamNotExist
+	}
+	return c, nil
+}
+
 func (s *Session) GetPorts() (ports []*Conn) {
 	s.plock.Lock()
 	defer s.plock.Unlock()
@@ -224,9 +235,9 @@ func (s *Session) Run() {
 // no drop, any error will reset main connection
 func (s *Session) sendFrameInChan(f Frame) (err error) {
 	streamid := f.GetStreamid()
-	c, ok := s.ports[streamid]
-	if !ok || c == nil {
-		return ErrStreamNotExist
+	c, err := s.GetPortById(streamid)
+	if err != nil {
+		return err
 	}
 
 	err = c.SendFrame(f)

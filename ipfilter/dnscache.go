@@ -24,7 +24,7 @@ func CreateDNSCache() (dc *DNSCache) {
 	return
 }
 
-func (dc DNSCache) LookupIP(hostname string) (addrs []net.IP, err error) {
+func (dc *DNSCache) LookupIP(hostname string) (addrs []net.IP, err error) {
 	dc.mu.Lock()
 	value, ok := dc.cache.Get(hostname)
 	dc.mu.Unlock()

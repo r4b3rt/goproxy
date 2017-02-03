@@ -242,7 +242,7 @@ func (sp *SessionPool) sessRun(sess *Session) {
 func (sp *SessionPool) Dial(network, address string) (net.Conn, error) {
 	sess, err := sp.Get()
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	return sess.Dial(network, address)
 }
